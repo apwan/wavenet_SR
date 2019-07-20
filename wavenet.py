@@ -3,10 +3,12 @@ import sys, os
 from typing import List
 os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '3'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-import tensorflow
+import tensorflow as tf
 from tensorflow import logging
 logging.set_verbosity(logging.ERROR)
-import sugartensor as tf
+
+# TODO: remove dependency on sugartensor
+import sugartensor as sgtf
 from functools import lru_cache
 
 # temparory fix for tensorflow < 1.5
@@ -86,28 +88,28 @@ def release_session():
 def init_session():
 	global sess
 	if sess is None:
-		config = tensorflow.ConfigProto()
+		config = tf.ConfigProto()
 		config.gpu_options.per_process_gpu_memory_fraction = 0.3
-		sess = tensorflow.Session(config=config)
+		sess = tf.Session(config=config)
 		# init variables
-		sess.run(tensorflow.group(tensorflow.global_variables_initializer(),
-                      tensorflow.local_variables_initializer()))
+		sess.run(tf.group(tf.global_variables_initializer(),
+                      tf.local_variables_initializer()))
 
 
 def load_model(ckpt_dir, recover_dict=None):
 	init_session()
 	# restore parameters
 	if recover_dict is None:
-		saver = tensorflow.train.Saver()
+		saver = tf.train.Saver()
 	else:
-		saver = tensorflow.train.Saver(recover_dict)
+		saver = tf.train.Saver(recover_dict)
 
 	print(f'load model from ckpt_dir: {ckpt_dir}')
-	saver.restore(sess, tensorflow.train.latest_checkpoint(ckpt_dir))
+	saver.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
 
 
 def default_recover_list(name) -> list:
-	recover_list = tensorflow.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
+	recover_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope=name)
 	return recover_list
 	#return {v.op.name:v for v in recover_list}
 
@@ -125,12 +127,12 @@ Reusabel components
 
 
 def build_conv1d_s1(input_dim, output_dim, batch_size, name, softmax=False):
-	x = tensorflow.placeholder(dtype=tf.sg_floatx, shape=(batch_size, None, input_dim))
+	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, input_dim))
 	if softmax:
-		logit = tensorflow.nn.softmax(x)
+		logit = tf.nn.softmax(x)
 	else:   
 		logit = x
-	logit = tf.sg_layer.sg_conv1d(logit, size=1, dim=output_dim, name=name)
+	logit = sgtf.sg_layer.sg_conv1d(logit, size=1, dim=output_dim, name=name)
 	return x, logit
 
 
@@ -143,7 +145,7 @@ def wavenet_block_scopes(n, r):
 # residual block
 def res_block(tensor, size, rate, block, dim):
 
-	with tf.sg_context(name=f'block_{block}_{rate}', reuse=tf.AUTO_REUSE):
+	with sgtf.sg_context(name=f'block_{block}_{rate}', reuse=sgtf.AUTO_REUSE):
 
 		# filter convolution
 		conv_filter = tensor.sg_aconv1d(size=size, rate=rate, act='tanh', bn=True, name='conv_filter')
@@ -166,7 +168,7 @@ def res_block(tensor, size, rate, block, dim):
 def get_logit(x, voca_size, num_blocks, num_block_layers, num_conv, num_dim):
 
 	# expand dimension
-	with tf.sg_context(name='front', reuse=tf.AUTO_REUSE):
+	with sgtf.sg_context(name='front', reuse=tf.AUTO_REUSE):
 		z = x.sg_conv1d(size=1, dim=num_dim, act='tanh', bn=True, name='conv_in')
 
 	# dilated conv block loop
@@ -180,7 +182,7 @@ def get_logit(x, voca_size, num_blocks, num_block_layers, num_conv, num_dim):
 	logit, in_layer = None, None	
 
 	# final logit layers
-	with tf.sg_context(name='logit', reuse=tf.AUTO_REUSE):
+	with sgtf.sg_context(name='logit', reuse=tf.AUTO_REUSE):
 		in_layer = skip.sg_conv1d(size=1, act='tanh', bn=True, name='conv_1')
 		logit = in_layer.sg_conv1d(size=1, dim=voca_size, name='conv_2')
 
@@ -190,10 +192,10 @@ def get_logit(x, voca_size, num_blocks, num_block_layers, num_conv, num_dim):
 
 def build_decoder(logit, seq_len):
 	# ctc decoding
-	decoded, _ = tensorflow.nn.ctc_beam_search_decoder(logit.sg_transpose(perm=[1, 0, 2]), seq_len, merge_repeated=False)
+	decoded, _ = tf.nn.ctc_beam_search_decoder(logit.sg_transpose(perm=[1, 0, 2]), seq_len, merge_repeated=False)
 	# to dense tensor
 	top = decoded[0]
-	y = tf.sparse_to_dense(top.indices, top.dense_shape, top.values) + 1 # skip <EOS>
+	y = sgtf.sparse_to_dense(top.indices, top.dense_shape, top.values) + 1 # skip <EOS>
 
 	return y, decoded
 
@@ -201,17 +203,17 @@ def build_decoder(logit, seq_len):
 
 '''
 Graph Builders
-return tuple of tf.Variables , and
-	 recover_list (no use in training) --> please use tf.sg_train
+return tuple of sgtf.Variables , and
+	 recover_list (no use in training) --> please use sgtf.sg_train
 '''
 
 def build_adapt_timit(name, batch_size, x, voca_size, **kwargs):
 	
-	with tf.sg_context(name=name, reuse=tf.AUTO_REUSE):
-		logit = tf.sg_layer.sg_conv1d(x, size=1, dim=voca_size, name='conv_2')
+	with sgtf.sg_context(name=name, reuse=tf.AUTO_REUSE):
+		logit = sgtf.sg_layer.sg_conv1d(x, size=1, dim=voca_size, name='conv_2')
 	# sequence length except zero-padding
-	seq_len = tf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
-	logit_softmax = tensorflow.nn.softmax(logit)
+	seq_len = sgtf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
+	logit_softmax = tf.nn.softmax(logit)
 	y, decoded = build_decoder(logit, seq_len)
 
 	return (x, logit, logit_softmax, y), default_recover_list(name)
@@ -229,14 +231,14 @@ def build_wavenet(name, batch_size, x, output_dim, **kwargs):
 	
 
 	# sequence length except zero-padding
-	seq_len = tf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
+	seq_len = sgtf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
 
-	with tf.sg_context(name=name, reuse=tf.AUTO_REUSE):
+	with sgtf.sg_context(name=name, reuse=sgtf.AUTO_REUSE):
 		logit, in_layer = get_logit(x, voca_size=output_dim, 
 			num_blocks=num_blocks, num_block_layers=num_block_layers, num_conv=num_conv, num_dim=num_dim)
 
-	#logit = tf.Print(logit, [tf.shape(logit)])
-	logit_softmax = tensorflow.nn.softmax(logit)
+	#logit = sgtf.Print(logit, [sgtf.shape(logit)])
+	logit_softmax = tf.nn.softmax(logit)
 	y, decoded = build_decoder(logit, seq_len)
 
 	return (logit, logit_softmax, in_layer, y), default_recover_list(name)
@@ -278,7 +280,7 @@ def loader_wavenet(prefix, **kwargs):
 	index2letter.extend([chr(i) for i in range(ord('a'), ord('z')+1)])
 	voca_size, print_index, batch_size, ckpt_dir = parse_args(prefix, index2letter, **kwargs)
 	# build graph
-	x = tensorflow.placeholder(dtype=tf.sg_floatx, shape=(batch_size, None, 20))
+	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, 20))
 	(logit, logit_softmax, in_layer, y), recover_list = build_wavenet(prefix, batch_size, x, voca_size)
 	# because previous training do not use score name, we need to strip prefix
 	recover_list = strip_recover_list(prefix, recover_list)
@@ -314,7 +316,7 @@ def loader_adapt_timit(prefix, **kwargs):
 	index2en_phon.extend(added)
 	
 	voca_size, print_index, batch_size, ckpt_dir = parse_args(prefix, index2en_phon, **kwargs)
-	x = tensorflow.placeholder(dtype=tf.sg_floatx, shape=(batch_size, None, 27))
+	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, 27))
 	# build graph
 	(x, logit, logit_softmax, y), recover_list = build_adapt_timit(prefix, batch_size, x, voca_size)
 	# because previous training do not use score name, we need to strip prefix
@@ -424,7 +426,7 @@ def predict_wavenet(mfccs, prefix='wavenet', **kwargs) -> list:
 
 
 	model = loader_wavenet(prefix, **kwargs)
-	logit, logit_softmax, y, in_layer = model.run_vars
+	logit, logit_softmax, in_layer, y = model.run_vars
 	x = model.feed_vars[0]
 
 	mfccs = split_batch(mfccs, model.batch_size)
