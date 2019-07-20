@@ -19,7 +19,7 @@ pipreqs:
 
 
 data:
-	-@./download_pretrained.sh
+	-@(which wget && ./download_pretrained.sh) || echo "you need to install wget"
 
 
 
