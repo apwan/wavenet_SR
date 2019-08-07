@@ -496,6 +496,6 @@ if __name__ == "__main__":
 	#test_pretrained()
 	test_adapt()
 	
-	
+        # Fernando in	
 	
 
