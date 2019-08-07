@@ -497,5 +497,5 @@ if __name__ == "__main__":
 	test_adapt()
 	
         # Fernando in	
-	
+	# Fernando out
 
