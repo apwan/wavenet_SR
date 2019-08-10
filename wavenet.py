@@ -28,7 +28,7 @@ default_ckpt_dirs = dict(
 	adapt_timit = abs_dir('./adapt_timit/')
 )
 
-
+from src_sep import source_separation
 
 
 '''
@@ -493,9 +493,11 @@ def test_adapt(data_dir='./sample/'):
 
 
 if __name__ == "__main__":
+
+	source_separation() # mark="mixture" by defualt
 	#test_pretrained()
 	test_adapt()
 	
-        # Fernando in	
+    # Fernando in	
 	# Fernando out
 
