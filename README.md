@@ -2,7 +2,7 @@
 
 **The folder architecture should be like this:**
 
-```python
+```
 |- sample/ # .mp3 recommended
 |  |- mixture_{songId} # original mixture
 |  |- orig_vocal_{songId} # original vocal
@@ -14,6 +14,7 @@
 |  |  |- checkpoint-15000
 |  |  |- ...
 |- wavenet.py # main executable
+|- ...
 ```
 
 ## Source sepration
