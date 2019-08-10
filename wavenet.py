@@ -4,7 +4,7 @@ from typing import List
 os.environ['TF_CPP_MIN_VLOG_LEVEL'] = '3'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
-from tensorflow import logging
+from tensorflow.compat.v1 import logging
 logging.set_verbosity(logging.ERROR)
 
 # TODO: remove dependency on sugartensor
@@ -85,11 +85,11 @@ def release_session():
 		sess = None
 		
 
-def init_session():
+def init_session(frac=0.3):
 	global sess
 	if sess is None:
 		config = tf.ConfigProto()
-		config.gpu_options.per_process_gpu_memory_fraction = 0.3
+		config.gpu_options.per_process_gpu_memory_fraction = frac
 		sess = tf.Session(config=config)
 		# init variables
 		sess.run(tf.group(tf.global_variables_initializer(),
@@ -126,13 +126,28 @@ Reusabel components
 '''	
 
 
+def sg_conv1d(x, dim, size=2, stride=1, padding='SAME', name=None):
+    if name is None:
+        name = __name__
+    input_dim = x.get_shape().as_list()[-1] # converted to int value
+    with tf.variable_scope(name, reuse=tf.AUTO_REUSE) as scope:
+        w = sgtf.sg_initializer.he_uniform('W', (size, input_dim, dim),
+                                         regularizer=None, summary=True)
+        ret = tf.nn.conv1d(x, w, stride=stride, padding=padding) # no bias
+        
+    return ret
+    
+
+# no sgtf
 def build_conv1d_s1(input_dim, output_dim, batch_size, name, softmax=False):
-	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, input_dim))
+	x = tf.placeholder(dtype=tf.float32, shape=(batch_size, None, input_dim))
 	if softmax:
 		logit = tf.nn.softmax(x)
 	else:   
 		logit = x
-	logit = sgtf.sg_layer.sg_conv1d(logit, size=1, dim=output_dim, name=name)
+        
+	logit = logit.sg_conv1d(dim=output_dim, size=1, name=name)
+    # 
 	return x, logit
 
 
@@ -145,7 +160,7 @@ def wavenet_block_scopes(n, r):
 # residual block
 def res_block(tensor, size, rate, block, dim):
 
-	with sgtf.sg_context(name=f'block_{block}_{rate}', reuse=sgtf.AUTO_REUSE):
+	with tf.variable_scope(f'block_{block}_{rate}', reuse=tf.AUTO_REUSE):
 
 		# filter convolution
 		conv_filter = tensor.sg_aconv1d(size=size, rate=rate, act='tanh', bn=True, name='conv_filter')
@@ -168,7 +183,7 @@ def res_block(tensor, size, rate, block, dim):
 def get_logit(x, voca_size, num_blocks, num_block_layers, num_conv, num_dim):
 
 	# expand dimension
-	with sgtf.sg_context(name='front', reuse=tf.AUTO_REUSE):
+	with tf.variable_scope('front', reuse=tf.AUTO_REUSE):
 		z = x.sg_conv1d(size=1, dim=num_dim, act='tanh', bn=True, name='conv_in')
 
 	# dilated conv block loop
@@ -182,20 +197,20 @@ def get_logit(x, voca_size, num_blocks, num_block_layers, num_conv, num_dim):
 	logit, in_layer = None, None	
 
 	# final logit layers
-	with sgtf.sg_context(name='logit', reuse=tf.AUTO_REUSE):
+	with tf.variable_scope('logit', reuse=tf.AUTO_REUSE):
 		in_layer = skip.sg_conv1d(size=1, act='tanh', bn=True, name='conv_1')
-		logit = in_layer.sg_conv1d(size=1, dim=voca_size, name='conv_2')
+		logit = in_layer.sg_conv1d(dim=voca_size, size=1, name='conv_2')
 
 	return logit, in_layer
 
 
-
+# no sgtf
 def build_decoder(logit, seq_len):
 	# ctc decoding
-	decoded, _ = tf.nn.ctc_beam_search_decoder(logit.sg_transpose(perm=[1, 0, 2]), seq_len, merge_repeated=False)
+	decoded, _ = tf.nn.ctc_beam_search_decoder(tf.transpose(logit, [1, 0, 2]), seq_len, merge_repeated=False)
 	# to dense tensor
 	top = decoded[0]
-	y = sgtf.sparse_to_dense(top.indices, top.dense_shape, top.values) + 1 # skip <EOS>
+	y = tf.sparse_to_dense(top.indices, top.dense_shape, top.values) + 1 # skip <EOS>
 
 	return y, decoded
 
@@ -207,12 +222,19 @@ return tuple of sgtf.Variables , and
 	 recover_list (no use in training) --> please use sgtf.sg_train
 '''
 
+def sg_len(x): # 3D: batch x seqlen x dim
+    non_zero = tf.not_equal(tf.reduce_sum(x, axis=2), 0.)
+    return tf.reduce_sum(tf.cast(non_zero, tf.int32), axis=1)
+    
+
+# no sgtf    
 def build_adapt_timit(name, batch_size, x, voca_size, **kwargs):
+    
 	
-	with sgtf.sg_context(name=name, reuse=tf.AUTO_REUSE):
-		logit = sgtf.sg_layer.sg_conv1d(x, size=1, dim=voca_size, name='conv_2')
+	with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+		logit = x.sg_conv1d(dim=voca_size, size=1, name='conv_2')
 	# sequence length except zero-padding
-	seq_len = sgtf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
+	seq_len = sg_len(x)
 	logit_softmax = tf.nn.softmax(logit)
 	y, decoded = build_decoder(logit, seq_len)
 
@@ -231,13 +253,13 @@ def build_wavenet(name, batch_size, x, output_dim, **kwargs):
 	
 
 	# sequence length except zero-padding
-	seq_len = sgtf.not_equal(x.sg_sum(axis=2), 0.).sg_int().sg_sum(axis=1)
+	seq_len = sg_len(x)
 
-	with sgtf.sg_context(name=name, reuse=sgtf.AUTO_REUSE):
+	with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
 		logit, in_layer = get_logit(x, voca_size=output_dim, 
 			num_blocks=num_blocks, num_block_layers=num_block_layers, num_conv=num_conv, num_dim=num_dim)
 
-	#logit = sgtf.Print(logit, [sgtf.shape(logit)])
+	#logit = tf.Print(logit, [tf.shape(logit)])
 	logit_softmax = tf.nn.softmax(logit)
 	y, decoded = build_decoder(logit, seq_len)
 
@@ -280,7 +302,7 @@ def loader_wavenet(prefix, **kwargs):
 	index2letter.extend([chr(i) for i in range(ord('a'), ord('z')+1)])
 	voca_size, print_index, batch_size, ckpt_dir = parse_args(prefix, index2letter, **kwargs)
 	# build graph
-	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, 20))
+	x = tf.placeholder(dtype=tf.float32, shape=(batch_size, None, 20))
 	(logit, logit_softmax, in_layer, y), recover_list = build_wavenet(prefix, batch_size, x, voca_size)
 	# because previous training do not use score name, we need to strip prefix
 	recover_list = strip_recover_list(prefix, recover_list)
@@ -316,7 +338,7 @@ def loader_adapt_timit(prefix, **kwargs):
 	index2en_phon.extend(added)
 	
 	voca_size, print_index, batch_size, ckpt_dir = parse_args(prefix, index2en_phon, **kwargs)
-	x = tf.placeholder(dtype=sgtf.sg_floatx, shape=(batch_size, None, 27))
+	x = tf.placeholder(dtype=tf.float32, shape=(batch_size, None, 27))
 	# build graph
 	(x, logit, logit_softmax, y), recover_list = build_adapt_timit(prefix, batch_size, x, voca_size)
 	# because previous training do not use score name, we need to strip prefix
