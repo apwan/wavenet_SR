@@ -1,5 +1,37 @@
 # WaveNet plus Source Speration
 
+**The folder architecture should be like this:**
+
+```python
+|- sample/ # .mp3 recommended
+|  |- mixture_{songId} # original mixture
+|  |- orig_vocal_{songId} # original vocal
+|  |- vocal_{songId} # separated vocal
+|- src_sep.py # source sepration
+|- config.py # model configuration
+|- srcSep_ckpt/
+|  |- 4stack_256_mir_1k/
+|  |  |- checkpoint-15000
+|  |  |- ...
+|- wavenet.py # main executable
+```
+
+## Source sepration
+
+### Dataset
+
+[MIR-1K](https://sites.google.com/site/unvoicedsoundseparation/mir-1k) dataset
+
+### Trained models
+
+These are the checkpoint files for each dataset to reproduce the results on the paper.
+
+[MIR-1K](https://www.dropbox.com/s/6759yx0zqer316f/mir_1k_checkpoints.zip?dl=0) (15000 training steps)
+
+### References
+
+[Music Source Separation Using Stacked Sourglass Networks](https://www.dropbox.com/s/w17nb9oqe7q5b8p/ISMIR18-sourceSep.pdf?dl=0)
+
 
 
 ## WaveNet Speech Recognition
@@ -24,38 +56,5 @@ Adapted model on TIMIT: [pretrained model download](https://drive.google.com/uc?
 [wavnet-speech-recognition](https://github.com/buriburisuri/speech-to-text-wavenet): pre-trained model [here](https://drive.google.com/uc?export=download&id=0B3ILZKxzcrUyVWwtT25FemZEZ1k), need to modify sugartensor `__init__.py` in order to be compatible with `tensorflow >=1.11`
 
 
-
-## Source sepration
-
-### Dataset
-
-[MIR-1K](https://sites.google.com/site/unvoicedsoundseparation/mir-1k) dataset
-
-### Training
-
-Set the dataset and checkpoint paths at config.py and run
-```
-python train_mir_1k.py
-```
-for MIR-1K dataset
-
-### Evaluation
-
-Run
-
-```
-python eval_mir_1k.py
-```
-for MIR-1K dataset
-
-### Trained models
-
-These are the checkpoint files for each dataset to reproduce the results on the paper.
-
-[MIR-1K](https://www.dropbox.com/s/6759yx0zqer316f/mir_1k_checkpoints.zip?dl=0) (15000 training steps)
-
-### References
-
-[Music Source Separation Using Stacked Sourglass Networks](https://www.dropbox.com/s/w17nb9oqe7q5b8p/ISMIR18-sourceSep.pdf?dl=0)
 
 
