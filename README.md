@@ -17,6 +17,13 @@
 |- ...
 ```
 
+Overall usage:
+
+1. Put the [MIR-1K](https://www.dropbox.com/s/6759yx0zqer316f/mir_1k_checkpoints.zip?dl=0) pretrainted model in `./srcSep_ckpt/4stack_256_mir_1k/`
+2. run `python wavenet.py`
+
+---
+
 ## Source sepration
 
 ### Dataset
@@ -32,8 +39,6 @@ These are the checkpoint files for each dataset to reproduce the results on the 
 ### References
 
 [Music Source Separation Using Stacked Sourglass Networks](https://www.dropbox.com/s/w17nb9oqe7q5b8p/ISMIR18-sourceSep.pdf?dl=0)
-
-
 
 ## WaveNet Speech Recognition
 
