@@ -2,5 +2,5 @@ librosa==0.6.2
 nltk==3.3
 numpy==1.15.3
 sugartensor==1.0.0.2
-tensorflow==1.11.0
+tensorflow==2.5.3
 typing==3.6.4
